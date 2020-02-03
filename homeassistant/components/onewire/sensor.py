@@ -3,7 +3,6 @@ from glob import glob
 import logging
 import os
 import time
-import json
 
 from pyownet import protocol
 import voluptuous as vol
@@ -59,7 +58,7 @@ HOBBYBOARD_EF = {
 }
 
 SENSOR_TYPES = {
-    # SensorType: [ Measured unity, Unit ]
+    # SensorType: [ Measured unit, Unit ]
     "temperature": ["temperature", TEMP_CELSIUS],
     "humidity": ["humidity", "%"],
     "humidity_raw": ["humidity", "%"],
@@ -102,17 +101,20 @@ def hb_info_from_type(dev_type="std"):
 
 def setup_platform(hass, config, add_entities, discovery_info=None):
     """Set up the one wire Sensors."""
-    base_dir = config.get(CONF_MOUNT_DIR)
-    owport = config.get(CONF_PORT)
+    base_dir = config[CONF_MOUNT_DIR]
+    owport = config[CONF_PORT]
     owhost = config.get(CONF_HOST)
-    _LOGGER.info("onewire initializing using : %s %s", owhost, owport)
+    if owhost:
+        _LOGGER.info("Initializing using %s:%s", owhost, owport)
+    else:
+        _LOGGER.info("Initializing using %s", base_dir)
 
     devs = []
     device_names = {}
     if CONF_NAMES in config:
         if isinstance(config[CONF_NAMES], dict):
             device_names = config[CONF_NAMES]
-    _LOGGER.info("device_names dictionary contains %s", json.dumps(device_names))
+
     # We have an owserver on a remote(or local) host/port
     if owhost:
         try:
@@ -124,8 +126,7 @@ def setup_platform(hass, config, add_entities, discovery_info=None):
             )
             devices = []
         for device in devices:
-            _LOGGER.debug("found device: %s", device)
-            _LOGGER.info("found device: %s", device)
+            _LOGGER.debug("Found device: %s", device)
             family = owproxy.read(f"{device}family").decode()
             dev_type = "std"
             if "EF" in family:
@@ -149,9 +150,6 @@ def setup_platform(hass, config, add_entities, discovery_info=None):
                         sensor_key = f"wetness_{id}"
                 sensor_id = os.path.split(os.path.split(device)[0])[1]
                 device_file = os.path.join(os.path.split(device)[0], sensor_value)
-
-                _LOGGER.info("appending: id:%s dev:%s as:%s",sensor_id, device_file, device_names.get(sensor_id, sensor_id))
-
                 devs.append(
                     OneWireProxy(
                         device_names.get(sensor_id, sensor_id),
@@ -214,7 +212,6 @@ class OneWire(Entity):
         """Initialize the sensor."""
         self._name = name + " " + sensor_type.capitalize()
         self._device_file = device_file
-        self._sensor_type = sensor_type
         self._unit_of_measurement = SENSOR_TYPES[sensor_type][1]
         self._state = None
 
@@ -245,11 +242,7 @@ class OneWire(Entity):
     def device_state_attributes(self):
         """Return the state attributes of the sensor."""
 
-        return {
-            "device_file" : self._device_file,
-            "sensor_type": self._sensor_type,
-            "raw_value": self._value_raw
-        }
+        return {"device_file": self._device_file, "raw_value": self._value_raw}
 
 
 class OneWireProxy(OneWire):
@@ -277,7 +270,7 @@ class OneWireProxy(OneWire):
         if value_read:
             value = round(float(value_read), 1)
             self._value_raw = float(value_read)
-            
+
         self._state = value
 
 
